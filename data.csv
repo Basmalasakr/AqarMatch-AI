@@ -271,6 +271,7 @@ House_ID,Neighborhood,Monthly_Rent_EGP,Bedrooms,Has_Workspace,Allows_Pets,Quietn
 270,Mokattam,40723,4,0,0,4,7,10,7,9,10,0,1,0,8
 271,Heliopolis,33877,4,1,0,7,3,3,9,10,2,0,1,0,7
 272,Heliopolis,31981,2,0,0,2,5,4,10,3,2,0,1,0,8
+
 273,El Obour,18026,3,1,0,9,4,2,4,7,8,1,1,0,6
 274,Faisal,24422,4,0,0,10,8,2,9,4,9,1,1,0,5
 275,Mohandeseen,13244,4,0,0,10,10,2,9,4,8,1,1,0,5
