@@ -3,12 +3,36 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from groq import Groq
 
-
 st.set_page_config(page_title="BaytIQ", layout="wide")
+
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stMetric {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("BaytIQ: Inclusive AI Real Estate Matcher")
 
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=GROQ_API_KEY)
+
+LOCATION_COORDS = {
+    'Zamalek': [30.0626, 31.2223], 'Maadi': [29.9592, 31.2590], 'New Cairo': [30.0300, 31.4700],
+    'Sheikh Zayed': [30.0400, 30.9800], 'Nasr City': [30.0600, 31.3300], 'Heliopolis': [30.1000, 31.3300],
+    'Dokki': [30.0380, 31.2110], 'Mohandeseen': [30.0500, 31.2000], '6th of October': [29.9333, 30.9167],
+    'Madinaty': [30.0900, 31.6200], 'Al Rehab': [30.0600, 31.4900], 'El Shorouk': [30.1400, 31.6200],
+    'El Obour': [30.2200, 31.4700], 'Mokattam': [30.0100, 31.3000], 'Downtown Cairo': [30.0444, 31.2357],
+    'Shoubra': [30.0700, 31.2400], 'Helwan': [29.8400, 31.3000], 'Haram': [29.9800, 31.1300],
+    'Faisal': [30.0000, 31.1500], 'New Capital': [29.9800, 31.7200]
+}
 
 @st.cache_resource
 def load_model():
@@ -95,35 +119,42 @@ user_profile = {
     'User_Neurodivergent': int(neurodivergent)
 }
 
-if st.sidebar.button("Find Inclusive Match"):
-    with st.spinner("Analyzing data..."):
+if st.sidebar.button("Find Inclusive Match", use_container_width=True):
+    with st.spinner("Analyzing data and generating blueprint..."):
         best_match = find_best_match(user_profile, df_houses)
         
         if best_match is not None:
             st.session_state['best_match'] = best_match
-            score = min(100, max(0, best_match['Match_Score']))
+            score = min(100.0, max(0.0, best_match['Match_Score']))
             
-            st.success(f"Matched in {best_match['Neighborhood']}")
-            st.metric("Match Score", f"{score:.1f}%")
+            st.success(f"Optimal Match Found in: **{best_match['Neighborhood']}**")
+            st.progress(int(score) / 100.0, text=f"Match Score: {score:.1f}%")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"**Rent:** {best_match['Monthly_Rent_EGP']} EGP")
-                st.write(f"**Bedrooms:** {best_match['Bedrooms']}")
-                st.write(f"**Wheelchair Accessible:** {bool(best_match['Wheelchair_Accessible'])}")
-                st.write(f"**Elevator:** {bool(best_match['Elevator_Access'])}")
-            with col2:
-                st.write(f"**Air Quality:** {best_match['Air_Quality_Index']}/10")
-                st.write(f"**Medical Proximity:** {best_match['Medical_Proximity_Score']}/10")
-                st.write(f"**Soundproofing:** {best_match['Soundproofing_Score']}/10")
-                st.write(f"**Natural Light:** {best_match['Natural_Light_Index']}/10")
+            lat_lon = LOCATION_COORDS.get(best_match['Neighborhood'], [30.0444, 31.2357])
+            df_map = pd.DataFrame({'lat': [lat_lon[0]], 'lon': [lat_lon[1]]})
+            st.map(df_map, zoom=11)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Rent (EGP)", f"{best_match['Monthly_Rent_EGP']}")
+            col2.metric("Bedrooms", f"{best_match['Bedrooms']}")
+            col3.metric("Air Quality", f"{best_match['Air_Quality_Index']}/10")
+            col4.metric("Medical Proximity", f"{best_match['Medical_Proximity_Score']}/10")
             
             st.divider()
             st.subheader("AI Medical & Interior Blueprint")
-            st.info(generate_ai_blueprint(user_profile, best_match))
+            blueprint = generate_ai_blueprint(user_profile, best_match)
+            st.info(blueprint)
+            
+            st.download_button(
+                label="Download Blueprint as TXT",
+                data=blueprint,
+                file_name=f"BaytIQ_{best_match['Neighborhood']}_Blueprint.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
                 
         else:
-            st.error("No properties found.")
+            st.error("No properties found within this budget.")
 
 if 'best_match' in st.session_state:
     st.divider()
