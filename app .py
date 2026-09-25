@@ -3,6 +3,7 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from groq import Groq
 
+
 st.set_page_config(page_title="BaytIQ", layout="wide")
 st.title("BaytIQ: Inclusive AI Real Estate Matcher")
 
