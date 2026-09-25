@@ -30,6 +30,7 @@ House_ID,Neighborhood,Monthly_Rent_EGP,Bedrooms,Has_Workspace,Allows_Pets,Quietn
 29,Nasr City,21669,3,0,1,10,5,4,8,9,9,1,1,0,6
 30,Faisal,10474,3,0,0,5,3,5,5,4,10,1,0,0,5
 31,Dokki,15228,3,1,0,8,6,6,9,6,3,0,1,0,7
+
 32,6th of October,37538,5,0,0,2,5,3,10,5,4,0,1,0,10
 33,Dokki,5843,4,1,0,10,4,5,2,6,7,0,0,0,8
 34,Haram,4073,3,0,1,2,5,5,2,7,4,0,1,0,9
