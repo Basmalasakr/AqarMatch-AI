@@ -3,23 +3,43 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from groq import Groq
 
-st.set_page_config(page_title="BaytIQ", layout="wide")
+st.set_page_config(page_title="BaytIQ", layout="wide", page_icon="🏠")
 
 st.markdown("""
     <style>
+    /* Light Theme & Clean UI */
+    .stApp { background-color: #F8F9FA; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stMetric {
-        background-color: #f8f9fa;
+    
+    /* Styled Metric Cards */
+    div[data-testid="metric-container"] {
+        background-color: #FFFFFF;
+        border: 1px solid #E0E6ED;
         padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    
+    /* Styled Explainability Boxes */
+    .success-box {
+        padding: 12px; border-radius: 8px; background-color: #D4EDDA; color: #155724; margin-bottom: 10px; font-size: 14px;
+    }
+    .warning-box {
+        padding: 12px; border-radius: 8px; background-color: #FFF3CD; color: #856404; margin-bottom: 10px; font-size: 14px;
+    }
+    
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 1px solid #E0E6ED;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("BaytIQ: Inclusive AI Real Estate Matcher")
+st.title("🏠 BaytIQ: Inclusive AI Real Estate Matcher")
+st.markdown("Discover properties perfectly matched to your **medical, accessibility, and lifestyle needs** using ML & Generative AI.")
 
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=GROQ_API_KEY)
@@ -47,11 +67,16 @@ def load_data():
 model = load_model()
 df_houses = load_data()
 
-def find_best_match(user_profile, df_houses):
+def find_top_matches(user_profile, df_houses, top_n=3):
     max_budget = user_profile['User_Budget'] + 1000
-    affordable = df_houses[df_houses['Monthly_Rent_EGP'] <= max_budget].copy()
+    valid_houses = df_houses[df_houses['Monthly_Rent_EGP'] <= max_budget].copy()
     
-    if affordable.empty:
+    if user_profile['User_Wheelchair']:
+        valid_houses = valid_houses[valid_houses['Wheelchair_Accessible'] == 1]
+    if user_profile['User_Elderly']:
+        valid_houses = valid_houses[valid_houses['Elevator_Access'] == 1]
+        
+    if valid_houses.empty:
         return None
     
     eval_df = pd.DataFrame({
@@ -60,19 +85,42 @@ def find_best_match(user_profile, df_houses):
         'User_Elderly': user_profile['User_Elderly'],
         'User_Respiratory': user_profile['User_Respiratory'],
         'User_Neurodivergent': user_profile['User_Neurodivergent'],
-        'House_Rent': affordable['Monthly_Rent_EGP'],
-        'House_Neighborhood': affordable['Neighborhood'],
-        'House_Wheelchair': affordable['Wheelchair_Accessible'],
-        'House_Elevator': affordable['Elevator_Access'],
-        'House_Air_Quality': affordable['Air_Quality_Index'],
-        'House_Medical': affordable['Medical_Proximity_Score'],
-        'House_Quietness': affordable['Quietness_Score'],
-        'House_Soundproof': affordable['Soundproofing_Score'],
-        'House_Light': affordable['Natural_Light_Index']
+        'House_Rent': valid_houses['Monthly_Rent_EGP'],
+        'House_Neighborhood': valid_houses['Neighborhood'],
+        'House_Wheelchair': valid_houses['Wheelchair_Accessible'],
+        'House_Elevator': valid_houses['Elevator_Access'],
+        'House_Air_Quality': valid_houses['Air_Quality_Index'],
+        'House_Medical': valid_houses['Medical_Proximity_Score'],
+        'House_Quietness': valid_houses['Quietness_Score'],
+        'House_Soundproof': valid_houses['Soundproofing_Score'],
+        'House_Light': valid_houses['Natural_Light_Index']
     })
     
-    affordable['Match_Score'] = model.predict(eval_df)
-    return affordable.sort_values(by='Match_Score', ascending=False).iloc[0]
+    valid_houses['Match_Score'] = model.predict(eval_df).clip(0, 100)
+    return valid_houses.sort_values(by='Match_Score', ascending=False).head(top_n)
+
+def explain_match(house, user_profile):
+    positives, negatives = [], []
+    
+    if user_profile['User_Wheelchair'] and house['Wheelchair_Accessible']:
+        positives.append(" Fully wheelchair accessible (Meets your strict requirement).")
+    if user_profile['User_Elderly'] and house['Elevator_Access']:
+        positives.append(" Elevator access available (Meets your strict requirement).")
+        
+    if house['Air_Quality_Index'] >= 8:
+        positives.append(f" Excellent air quality ({house['Air_Quality_Index']}/10).")
+    elif house['Air_Quality_Index'] <= 5 and user_profile['User_Respiratory']:
+        negatives.append(f" Moderate air quality ({house['Air_Quality_Index']}/10) - Air purifiers recommended.")
+        
+    if house['Medical_Proximity_Score'] >= 7:
+        positives.append(f" Close to medical facilities ({house['Medical_Proximity_Score']}/10).")
+        
+    if house['Monthly_Rent_EGP'] > user_profile['User_Budget']:
+        negatives.append(f"Rent exceeds your base budget by {house['Monthly_Rent_EGP'] - user_profile['User_Budget']} EGP.")
+    else:
+        positives.append(" Completely within your budget.")
+        
+    return positives, negatives
 
 def generate_ai_blueprint(user_profile, house):
     profiles = []
@@ -82,8 +130,7 @@ def generate_ai_blueprint(user_profile, house):
     if user_profile['User_Neurodivergent']: profiles.append("Neurodivergent")
     
     profile_str = ", ".join(profiles) if profiles else "Standard Lifestyle"
-    
-    prompt = f"You are an AI Interior Design Expert. The user profile is: {profile_str}. The matched house is in {house['Neighborhood']} with Air Quality: {house['Air_Quality_Index']}/10, Soundproofing: {house['Soundproofing_Score']}/10, Light: {house['Natural_Light_Index']}/10. Write a strict 3-sentence actionable interior design and spatial arrangement blueprint tailored to their specific medical or psychological needs."
+    prompt = f"You are an AI Accessibility & Interior Design Expert. User profile: {profile_str}. House in {house['Neighborhood']} with Air Quality: {house['Air_Quality_Index']}/10, Soundproofing: {house['Soundproofing_Score']}/10. Write a strict 3-sentence actionable spatial arrangement and interior design blueprint tailored to their accessibility needs. Do not give medical advice."
     
     try:
         response = client.chat.completions.create(model="openai/gpt-oss-120b", messages=[{"role": "user", "content": prompt}])
@@ -92,75 +139,80 @@ def generate_ai_blueprint(user_profile, house):
         return "Ensure optimal furniture placement for accessibility and use ambient lighting to enhance comfort."
 
 def chat_with_agent(question, house):
-    prompt = f"""You are AqarBot, an AI Real Estate Assistant. 
-    Answer in English based on these details:
-    Location: {house['Neighborhood']}, Rent: {house['Monthly_Rent_EGP']} EGP, Wheelchair Accessible: {bool(house['Wheelchair_Accessible'])}, Elevator: {bool(house['Elevator_Access'])}, Air Quality: {house['Air_Quality_Index']}/10, Medical Proximity: {house['Medical_Proximity_Score']}/10, Soundproof: {house['Soundproofing_Score']}/10, Light: {house['Natural_Light_Index']}/10.
-    Question: {question}"""
+    prompt = f"You are AqarBot. Answer using ONLY these details: Location: {house['Neighborhood']}, Rent: {house['Monthly_Rent_EGP']} EGP, Wheelchair: {bool(house['Wheelchair_Accessible'])}, Elevator: {bool(house['Elevator_Access'])}, Air Quality: {house['Air_Quality_Index']}/10. Question: {question}"
     try:
-        response = client.chat.completions.create(model="openai/gpt-oss-120b", messages=[{"role": "user", "content": prompt}], temperature=0.7)
+        response = client.chat.completions.create(model="openai/gpt-oss-120b", messages=[{"role": "user", "content": prompt}], temperature=0.5)
         return response.choices[0].message.content
     except:
         return "Network issue. Please try again."
 
-st.sidebar.header("User Profile")
+
+st.sidebar.header("👤 User Profile")
 budget = st.sidebar.number_input("Monthly Budget (EGP)", 4000, 50000, 15000, step=1000)
 
-st.sidebar.subheader("Health & Accessibility Needs")
-wheelchair = st.sidebar.checkbox("Wheelchair Access Required")
-elderly = st.sidebar.checkbox("Elderly / Limited Mobility")
+st.sidebar.subheader(" Health & Accessibility")
+wheelchair = st.sidebar.checkbox("Wheelchair Access (Hard Constraint)")
+elderly = st.sidebar.checkbox("Elderly / Elevator (Hard Constraint)")
 respiratory = st.sidebar.checkbox("Respiratory Issues (Asthma/Allergies)")
 neurodivergent = st.sidebar.checkbox("Neurodivergent (Autism/ADHD)")
 
+st.sidebar.divider()
+st.sidebar.subheader(" How BaytIQ Works")
+st.sidebar.info("1. **Hard Constraints:** Filters properties lacking required physical accessibility.\n2. **CatBoost Engine:** Ranks properties on 14 environmental features.\n3. **Groq LLM:** Generates personalized accessibility blueprints.")
+
 user_profile = {
-    'User_Budget': budget,
-    'User_Wheelchair': int(wheelchair),
-    'User_Elderly': int(elderly),
-    'User_Respiratory': int(respiratory),
+    'User_Budget': budget, 'User_Wheelchair': int(wheelchair),
+    'User_Elderly': int(elderly), 'User_Respiratory': int(respiratory),
     'User_Neurodivergent': int(neurodivergent)
 }
 
-if st.sidebar.button("Find Inclusive Match", use_container_width=True):
-    with st.spinner("Analyzing data and generating blueprint..."):
-        best_match = find_best_match(user_profile, df_houses)
+if st.sidebar.button(" Find Top Matches", use_container_width=True, type="primary"):
+    with st.spinner("Analyzing data & generating AI blueprints..."):
+        top_matches = find_top_matches(user_profile, df_houses)
         
-        if best_match is not None:
-            st.session_state['best_match'] = best_match
-            score = min(100.0, max(0.0, best_match['Match_Score']))
+        if top_matches is not None and not top_matches.empty:
+            st.success(f"🎉 Found {len(top_matches)} highly compatible properties!")
             
-            st.success(f"Optimal Match Found in: **{best_match['Neighborhood']}**")
-            st.progress(int(score) / 100.0, text=f"Match Score: {score:.1f}%")
+            tab_titles = [f"#{i+1}: {row['Neighborhood']} ({row['Match_Score']:.1f}%)" for i, row in top_matches.reset_index().iterrows()]
+            tabs = st.tabs(tab_titles)
             
-            lat_lon = LOCATION_COORDS.get(best_match['Neighborhood'], [30.0444, 31.2357])
-            df_map = pd.DataFrame({'lat': [lat_lon[0]], 'lon': [lat_lon[1]]})
-            st.map(df_map, zoom=11)
-            
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Rent (EGP)", f"{best_match['Monthly_Rent_EGP']}")
-            col2.metric("Bedrooms", f"{best_match['Bedrooms']}")
-            col3.metric("Air Quality", f"{best_match['Air_Quality_Index']}/10")
-            col4.metric("Medical Proximity", f"{best_match['Medical_Proximity_Score']}/10")
-            
-            st.divider()
-            st.subheader("AI Medical & Interior Blueprint")
-            blueprint = generate_ai_blueprint(user_profile, best_match)
-            st.info(blueprint)
-            
-            st.download_button(
-                label="Download Blueprint as TXT",
-                data=blueprint,
-                file_name=f"BaytIQ_{best_match['Neighborhood']}_Blueprint.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
+            for i, tab in enumerate(tabs):
+                house = top_matches.iloc[i]
+                score = house['Match_Score']
                 
+                with tab:
+                    st.progress(int(score) / 100.0, text=f"AI Match Score: {score:.1f}%")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Rent (EGP)", f"{house['Monthly_Rent_EGP']}")
+                    col2.metric("Bedrooms", f"{house['Bedrooms']}")
+                    col3.metric("Air Quality", f"{house['Air_Quality_Index']}/10")
+                    col4.metric("Medical", f"{house['Medical_Proximity_Score']}/10")
+                    
+                    col_map, col_explain = st.columns([1, 1])
+                    with col_map:
+                        lat_lon = LOCATION_COORDS.get(house['Neighborhood'], [30.0444, 31.2357])
+                        st.map(pd.DataFrame({'lat': [lat_lon[0]], 'lon': [lat_lon[1]]}), zoom=11)
+                    
+                    with col_explain:
+                        st.markdown("####  Why this property?")
+                        pos, neg = explain_match(house, user_profile)
+                        for p in pos:
+                            st.markdown(f"<div class='success-box'>{p}</div>", unsafe_allow_html=True)
+                        if neg:
+                            for n in neg:
+                                st.markdown(f"<div class='warning-box'>{n}</div>", unsafe_allow_html=True)
+                    
+                    st.divider()
+                    st.subheader(" AI Accessibility & Interior Blueprint")
+                    blueprint = generate_ai_blueprint(user_profile, house)
+                    st.info(blueprint)
+                    
+                    st.download_button(label=f"📥 Download Blueprint", data=blueprint, file_name=f"BaytIQ_Blueprint_{i+1}.txt", mime="text/plain", key=f"dl_{i}")
+                    
+                    with st.expander("💬 Ask AqarBot about this property"):
+                        user_q = st.text_input("What would you like to know?", key=f"q_{i}")
+                        if st.button("Ask", key=f"btn_{i}") and user_q:
+                            st.success(chat_with_agent(user_q, house))
         else:
-            st.error("No properties found within this budget.")
-
-if 'best_match' in st.session_state:
-    st.divider()
-    st.subheader("AqarBot Assistant")
-    user_q = st.text_input("Ask AqarBot about this property:")
-    if st.button("Ask") and user_q:
-        with st.spinner("Processing..."):
-            answer = chat_with_agent(user_q, st.session_state['best_match'])
-            st.success(answer)
+            st.error("No properties found matching your strict hard constraints and budget.")
