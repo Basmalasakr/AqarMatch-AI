@@ -5,40 +5,7 @@ from groq import Groq
 
 st.set_page_config(page_title="BaytIQ", layout="wide", page_icon="🏠")
 
-st.markdown("""
-    <style>
-    /* Light Theme & Clean UI */
-    .stApp { background-color: #F8F9FA; }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Styled Metric Cards */
-    div[data-testid="metric-container"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E0E6ED;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
-    
-    /* Styled Explainability Boxes */
-    .success-box {
-        padding: 12px; border-radius: 8px; background-color: #D4EDDA; color: #155724; margin-bottom: 10px; font-size: 14px;
-    }
-    .warning-box {
-        padding: 12px; border-radius: 8px; background-color: #FFF3CD; color: #856404; margin-bottom: 10px; font-size: 14px;
-    }
-    
-    /* Sidebar Styling */
-    [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid #E0E6ED;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("🏠 BaytIQ: Inclusive AI Real Estate Matcher")
+st.title(" BaytIQ: Inclusive AI Real Estate Matcher")
 st.markdown("Discover properties perfectly matched to your **medical, accessibility, and lifestyle needs** using ML & Generative AI.")
 
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
@@ -103,22 +70,22 @@ def explain_match(house, user_profile):
     positives, negatives = [], []
     
     if user_profile['User_Wheelchair'] and house['Wheelchair_Accessible']:
-        positives.append(" Fully wheelchair accessible (Meets your strict requirement).")
+        positives.append("Fully wheelchair accessible (Meets your strict requirement).")
     if user_profile['User_Elderly'] and house['Elevator_Access']:
-        positives.append(" Elevator access available (Meets your strict requirement).")
+        positives.append("Elevator access available (Meets your strict requirement).")
         
     if house['Air_Quality_Index'] >= 8:
-        positives.append(f" Excellent air quality ({house['Air_Quality_Index']}/10).")
+        positives.append(f"Excellent air quality ({house['Air_Quality_Index']}/10).")
     elif house['Air_Quality_Index'] <= 5 and user_profile['User_Respiratory']:
-        negatives.append(f" Moderate air quality ({house['Air_Quality_Index']}/10) - Air purifiers recommended.")
+        negatives.append(f"Moderate air quality ({house['Air_Quality_Index']}/10) - Air purifiers recommended.")
         
     if house['Medical_Proximity_Score'] >= 7:
-        positives.append(f" Close to medical facilities ({house['Medical_Proximity_Score']}/10).")
+        positives.append(f"Close to medical facilities ({house['Medical_Proximity_Score']}/10).")
         
     if house['Monthly_Rent_EGP'] > user_profile['User_Budget']:
         negatives.append(f"Rent exceeds your base budget by {house['Monthly_Rent_EGP'] - user_profile['User_Budget']} EGP.")
     else:
-        positives.append(" Completely within your budget.")
+        positives.append("Completely within your budget.")
         
     return positives, negatives
 
@@ -130,13 +97,14 @@ def generate_ai_blueprint(user_profile, house):
     if user_profile['User_Neurodivergent']: profiles.append("Neurodivergent")
     
     profile_str = ", ".join(profiles) if profiles else "Standard Lifestyle"
-    prompt = f"You are an AI Accessibility & Interior Design Expert. User profile: {profile_str}. House in {house['Neighborhood']} with Air Quality: {house['Air_Quality_Index']}/10, Soundproofing: {house['Soundproofing_Score']}/10. Write a strict 3-sentence actionable spatial arrangement and interior design blueprint tailored to their accessibility needs. Do not give medical advice."
+    
+    prompt = f"You are an AI Accessibility & Interior Design Expert. User profile: {profile_str}. House in {house['Neighborhood']}. Write a very concise, 3-bullet-point interior design blueprint tailored to their accessibility needs. Keep each bullet short, punchy, and highly readable. Do not give medical advice."
     
     try:
         response = client.chat.completions.create(model="openai/gpt-oss-120b", messages=[{"role": "user", "content": prompt}])
         return response.choices[0].message.content
     except:
-        return "Ensure optimal furniture placement for accessibility and use ambient lighting to enhance comfort."
+        return "• Ensure optimal furniture placement for accessibility.\n• Use ambient lighting to enhance comfort.\n• Keep pathways clear."
 
 def chat_with_agent(question, house):
     prompt = f"You are AqarBot. Answer using ONLY these details: Location: {house['Neighborhood']}, Rent: {house['Monthly_Rent_EGP']} EGP, Wheelchair: {bool(house['Wheelchair_Accessible'])}, Elevator: {bool(house['Elevator_Access'])}, Air Quality: {house['Air_Quality_Index']}/10. Question: {question}"
@@ -146,8 +114,7 @@ def chat_with_agent(question, house):
     except:
         return "Network issue. Please try again."
 
-
-st.sidebar.header("👤 User Profile")
+st.sidebar.header(" User Profile")
 budget = st.sidebar.number_input("Monthly Budget (EGP)", 4000, 50000, 15000, step=1000)
 
 st.sidebar.subheader(" Health & Accessibility")
@@ -171,7 +138,7 @@ if st.sidebar.button(" Find Top Matches", use_container_width=True, type="primar
         top_matches = find_top_matches(user_profile, df_houses)
         
         if top_matches is not None and not top_matches.empty:
-            st.success(f"🎉 Found {len(top_matches)} highly compatible properties!")
+            st.success(f" Found {len(top_matches)} highly compatible properties!")
             
             tab_titles = [f"#{i+1}: {row['Neighborhood']} ({row['Match_Score']:.1f}%)" for i, row in top_matches.reset_index().iterrows()]
             tabs = st.tabs(tab_titles)
@@ -198,19 +165,19 @@ if st.sidebar.button(" Find Top Matches", use_container_width=True, type="primar
                         st.markdown("####  Why this property?")
                         pos, neg = explain_match(house, user_profile)
                         for p in pos:
-                            st.markdown(f"<div class='success-box'>{p}</div>", unsafe_allow_html=True)
+                            st.success(p)
                         if neg:
                             for n in neg:
-                                st.markdown(f"<div class='warning-box'>{n}</div>", unsafe_allow_html=True)
+                                st.warning(n)
                     
                     st.divider()
                     st.subheader(" AI Accessibility & Interior Blueprint")
                     blueprint = generate_ai_blueprint(user_profile, house)
                     st.info(blueprint)
                     
-                    st.download_button(label=f"📥 Download Blueprint", data=blueprint, file_name=f"BaytIQ_Blueprint_{i+1}.txt", mime="text/plain", key=f"dl_{i}")
+                    st.download_button(label=f" Download Blueprint", data=blueprint, file_name=f"BaytIQ_Blueprint_{i+1}.txt", mime="text/plain", key=f"dl_{i}")
                     
-                    with st.expander("💬 Ask AqarBot about this property"):
+                    with st.expander(" Ask AqarBot about this property"):
                         user_q = st.text_input("What would you like to know?", key=f"q_{i}")
                         if st.button("Ask", key=f"btn_{i}") and user_q:
                             st.success(chat_with_agent(user_q, house))
